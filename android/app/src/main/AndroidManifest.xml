@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="lineglideX"
+        android:label="LineGlideX"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -1,4 +1,4 @@
-package com.example.lineglidex
+package com.hamad_gaming.lineglidex
 
 import io.flutter.embedding.android.FlutterActivity
 

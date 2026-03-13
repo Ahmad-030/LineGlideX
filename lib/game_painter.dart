@@ -67,13 +67,12 @@ class GamePainter extends CustomPainter {
     _drawObstacles(canvas);
     _drawCurrentStroke(canvas);
     _drawTrail(canvas);
-    _drawRider(canvas);
+    _drawMotorbike(canvas);
     _drawParticles(canvas);
   }
 
   void _drawGoalLine(Canvas canvas, Size size) {
     if (targetDistance >= 999999) return;
-    // Goal line in world space: x = targetDistance * 10
     final goalWorldX = targetDistance * 10.0;
     final goalScreenX = goalWorldX - cameraX;
     if (goalScreenX < -50 || goalScreenX > size.width + 50) return;
@@ -83,14 +82,12 @@ class GamePainter extends CustomPainter {
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke;
 
-    // Dashed line
     double y = 0;
     while (y < size.height) {
       canvas.drawLine(Offset(goalScreenX, y), Offset(goalScreenX, y + 14), paint);
       y += 22;
     }
 
-    // Goal label
     final tp = TextPainter(
       text: TextSpan(
         text: '🏁 GOAL',
@@ -142,17 +139,14 @@ class GamePainter extends CustomPainter {
           ..style = PaintingStyle.stroke,
       );
 
-      // Start dot
       if (si == 0) {
         final sp = (phase == GamePhase.drawing) ? seg.points.first : w2s(seg.points.first);
         canvas.drawCircle(sp, 8, Paint()..color = GameConstants.accentGreen);
-        canvas.drawCircle(
-          sp, 8,
-          Paint()
-            ..color = Colors.white.withOpacity(0.35)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2,
-        );
+        canvas.drawCircle(sp, 8,
+            Paint()
+              ..color = Colors.white.withOpacity(0.35)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2);
       }
     }
   }
@@ -226,11 +220,13 @@ class GamePainter extends CustomPainter {
     for (int i = 0; i < riderTrail.length; i++) {
       final frac = i / riderTrail.length;
       canvas.drawCircle(w2s(riderTrail[i]), 3.5 * frac,
-          Paint()..color = GameConstants.accentCyan.withOpacity(frac * 0.55));
+          Paint()..color = GameConstants.accentCyan.withOpacity(frac * 0.4));
     }
   }
 
-  void _drawRider(Canvas canvas) {
+  // ─── Proper Motorbike + Rider ─────────────────────────────────────────────
+
+  void _drawMotorbike(Canvas canvas) {
     if (rider == null) return;
     final sp = w2s(rider!.position);
 
@@ -238,41 +234,264 @@ class GamePainter extends CustomPainter {
     canvas.translate(sp.dx, sp.dy);
     canvas.rotate(rider!.angle);
 
-    // Shadow
-    canvas.drawCircle(const Offset(0, 2), 14, Paint()..color = Colors.black.withOpacity(0.35));
+    // Ground shadow
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(0, 16), width: 56, height: 10),
+      Paint()..color = Colors.black.withOpacity(0.28),
+    );
 
-    // Board
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(-17, 5, 34, 6), const Radius.circular(3)),
-        Paint()..color = const Color(0xFF8B949E));
-
-    // Wheels
-    for (final ox in [-11.0, 11.0]) {
-      canvas.drawCircle(Offset(ox, 12), 5.5, Paint()..color = const Color(0xFF21262D));
-      canvas.drawCircle(Offset(ox, 12), 3.5, Paint()..color = const Color(0xFF8B949E));
-    }
-
-    // Body
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(-7, -9, 14, 16), const Radius.circular(5)),
-        Paint()..color = GameConstants.riderGreen);
-
-    // Head
-    canvas.drawCircle(const Offset(0, -18), 9, Paint()..color = const Color(0xFFF0D9B5));
-    canvas.drawCircle(const Offset(3, -19), 2.5, Paint()..color = const Color(0xFF1C1C1C));
-
-    // Scarf
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(-7, -11, 14, 4), const Radius.circular(2)),
-        Paint()..color = GameConstants.accentRed);
+    _drawBikeBody(canvas);
+    _drawBikeRider(canvas);
 
     canvas.restore();
   }
 
+  void _drawBikeBody(Canvas canvas) {
+    // ── Rear wheel ──
+    _drawWheel(canvas, const Offset(-16, 14), 11);
+
+    // ── Front wheel ──
+    _drawWheel(canvas, const Offset(16, 14), 10);
+
+    // ── Swingarm (rear suspension) ──
+    canvas.drawLine(
+      const Offset(-3, 4),
+      const Offset(-16, 14),
+      Paint()
+        ..color = const Color(0xFF444C56)
+        ..strokeWidth = 3.5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // ── Chain / engine area ──
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-10, 0, 20, 9), const Radius.circular(3)),
+      Paint()..color = const Color(0xFF21262D),
+    );
+
+    // ── Main frame ──
+    final framePath = Path()
+      ..moveTo(-12, 4)   // rear top
+      ..lineTo(4, -8)    // top spine toward front
+      ..lineTo(14, -4)   // front fork top
+      ..lineTo(16, 14)   // front axle
+      ..lineTo(-1, 6)    // bottom bracket
+      ..lineTo(-16, 14)  // rear axle
+      ..close();
+    canvas.drawPath(
+      framePath,
+      Paint()..color = const Color(0xFF1C2A3A),
+    );
+    canvas.drawPath(
+      framePath,
+      Paint()
+        ..color = const Color(0xFF00E5FF).withOpacity(0.55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+
+    // ── Fuel tank ──
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-8, -11, 16, 8), const Radius.circular(4)),
+      Paint()..color = const Color(0xFF238636),
+    );
+    // Tank highlight
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-5, -10, 8, 3), const Radius.circular(2)),
+      Paint()..color = const Color(0xFF3FB950).withOpacity(0.6),
+    );
+
+    // ── Fairing / headlight ──
+    final fairingPath = Path()
+      ..moveTo(10, -6)
+      ..lineTo(18, -2)
+      ..lineTo(18, 4)
+      ..lineTo(10, 2)
+      ..close();
+    canvas.drawPath(fairingPath, Paint()..color = const Color(0xFF1C2A3A));
+    // Headlight
+    canvas.drawOval(
+      const Rect.fromLTWH(14, -1, 6, 5),
+      Paint()..color = const Color(0xFFFFDD00).withOpacity(0.9),
+    );
+    canvas.drawOval(
+      const Rect.fromLTWH(14, -1, 6, 5),
+      Paint()
+        ..color = const Color(0xFFFFDD00).withOpacity(0.4)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+
+    // ── Exhaust pipe ──
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-20, 6, 10, 3), const Radius.circular(1.5)),
+      Paint()..color = const Color(0xFF8B949E),
+    );
+    // Exhaust tip
+    canvas.drawOval(
+      const Rect.fromLTWH(-22, 6, 5, 3),
+      Paint()..color = const Color(0xFF6E7681),
+    );
+
+    // ── Front fork ──
+    canvas.drawLine(
+      const Offset(12, -4),
+      const Offset(16, 14),
+      Paint()
+        ..color = const Color(0xFF58A6FF)
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // ── Seat ──
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-12, -13, 14, 5), const Radius.circular(3)),
+      Paint()..color = const Color(0xFF161B22),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-12, -13, 14, 5), const Radius.circular(3)),
+      Paint()
+        ..color = const Color(0xFF8B949E).withOpacity(0.4)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+  }
+
+  void _drawWheel(Canvas canvas, Offset center, double radius) {
+    // Tyre (outer ring)
+    canvas.drawCircle(
+      center, radius,
+      Paint()..color = const Color(0xFF21262D),
+    );
+    // Tyre highlight
+    canvas.drawCircle(
+      center, radius,
+      Paint()
+        ..color = const Color(0xFF444C56)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+    // Hub
+    canvas.drawCircle(
+      center, radius * 0.38,
+      Paint()..color = const Color(0xFF58A6FF),
+    );
+    // Spokes × 4
+    for (int s = 0; s < 4; s++) {
+      final ang = s * pi / 4;
+      canvas.drawLine(
+        Offset(center.dx + cos(ang) * radius * 0.38, center.dy + sin(ang) * radius * 0.38),
+        Offset(center.dx + cos(ang) * radius * 0.9, center.dy + sin(ang) * radius * 0.9),
+        Paint()
+          ..color = const Color(0xFF8B949E)
+          ..strokeWidth = 1,
+      );
+    }
+  }
+
+  void _drawBikeRider(Canvas canvas) {
+    // ── Legs / boots ──
+    // Left leg (far side — slightly behind)
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-10, -6, 5, 10), const Radius.circular(2)),
+      Paint()..color = const Color(0xFF1C2A3A).withOpacity(0.7),
+    );
+    // Right leg
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-6, -6, 5, 10), const Radius.circular(2)),
+      Paint()..color = const Color(0xFF1C2A3A),
+    );
+    // Boots
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-10, 2, 9, 4), const Radius.circular(2)),
+      Paint()..color = const Color(0xFF0D1117),
+    );
+
+    // ── Body / jacket ──
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-9, -18, 14, 13), const Radius.circular(4)),
+      Paint()..color = const Color(0xFF238636),
+    );
+    // Jacket stripe
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-9, -14, 14, 3), const Radius.circular(1)),
+      Paint()..color = const Color(0xFF00E5FF).withOpacity(0.5),
+    );
+
+    // ── Arms (reaching forward to handlebar) ──
+    canvas.drawLine(
+      const Offset(0, -15),
+      const Offset(10, -10),
+      Paint()
+        ..color = const Color(0xFF238636)
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round,
+    );
+    // Glove
+    canvas.drawCircle(
+      const Offset(10, -10), 3,
+      Paint()..color = const Color(0xFF0D1117),
+    );
+
+    // ── Handlebar ──
+    canvas.drawLine(
+      const Offset(7, -12),
+      const Offset(13, -12),
+      Paint()
+        ..color = const Color(0xFF8B949E)
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // ── Neck ──
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-2, -22, 5, 5), const Radius.circular(2)),
+      Paint()..color = const Color(0xFFF0D9B5),
+    );
+
+    // ── Helmet ──
+    // Helmet shell
+    canvas.drawOval(
+      const Rect.fromLTWH(-8, -34, 18, 16),
+      Paint()..color = const Color(0xFF238636),
+    );
+    // Helmet visor / stripe
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-4, -29, 12, 5), const Radius.circular(3)),
+      Paint()..color = const Color(0xFF00E5FF).withOpacity(0.85),
+    );
+    // Visor glare
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-2, -28, 4, 2), const Radius.circular(1)),
+      Paint()..color = Colors.white.withOpacity(0.55),
+    );
+    // Helmet outline
+    canvas.drawOval(
+      const Rect.fromLTWH(-8, -34, 18, 16),
+      Paint()
+        ..color = const Color(0xFF3FB950).withOpacity(0.7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+  }
+
   void _drawParticles(Canvas canvas) {
     for (final p in particles) {
-      canvas.drawCircle(w2s(p.position), p.radius,
-          Paint()..color = p.color.withOpacity(p.opacity));
+      canvas.drawCircle(
+          w2s(p.position), p.radius, Paint()..color = p.color.withOpacity(p.opacity));
     }
   }
 

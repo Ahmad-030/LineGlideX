@@ -24,7 +24,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   List<Particle> _particles = [];
   late Ticker _ticker;
   double _elapsed = 0;
-  bool _canUndo = false;
   double _riderTrailTimer = 0;
   final List<Offset> _riderTrail = [];
 
@@ -46,15 +45,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   bool _isDrawingStroke = false;
 
   // ── Idle / falling detection ──────────────────────────────────────────────
-  // "Idle" = horizontal speed is very low while riding (stuck in place).
-  // "Falling" = rider is in the air with downward velocity beyond a threshold.
-  // In either case we give the player 3 seconds before crashing.
-  static const double _idleSpeedThreshold = 12.0;   // px/s — below this = idle
-  static const double _fallVelocityThreshold = 350.0; // px/s downward = falling fast
+  static const double _idleSpeedThreshold = 12.0;
+  static const double _fallVelocityThreshold = 350.0;
   static const double _idleCountdownSeconds = 3.0;
 
-  double _idleTimer = 0.0;      // counts up while idle/falling
-  bool _idleWarning = false;    // true when countdown is active
+  double _idleTimer = 0.0;
+  bool _idleWarning = false;
 
   final Random _rng = Random();
 
@@ -122,7 +118,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     final vel = _rider!.velocity;
 
     final isIdle = vel.dx.abs() < _idleSpeedThreshold;
-    // Falling fast downward while NOT on ground (or barely on ground)
     final isFalling = vel.dy > _fallVelocityThreshold && !_rider!.onGround;
 
     if (isIdle || isFalling) {
@@ -134,7 +129,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         _crash(_rider!.position);
       }
     } else {
-      // Player is moving normally — reset timer
       _idleTimer = 0.0;
       _idleWarning = false;
     }
@@ -268,7 +262,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   // ─── Actions ──────────────────────────────────────────────────────────────
 
   void _crash(Offset worldPos) {
-    if (_phase == GamePhase.crashed) return; // prevent double-crash
+    if (_phase == GamePhase.crashed) return;
     _phase = GamePhase.crashed;
     _idleTimer = 0;
     _idleWarning = false;
@@ -326,6 +320,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     await SaveService.save(data);
   }
 
+  // ── Auto-starts as soon as the first stroke ends ───────────────────────────
   void _startRiding() {
     if (_segments.isEmpty) return;
     final firstSeg = _segments.first;
@@ -367,7 +362,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _riderTrail.clear();
       _obstacles.clear();
       _distanceMeters = 0;
-      _canUndo = false;
       _cameraX = 0;
       _cameraY = 0;
       _idleTimer = 0;
@@ -382,15 +376,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _loadLevelConfig();
     });
     _resetToDrawing();
-  }
-
-  void _undo() {
-    if (_phase == GamePhase.drawing && _segments.isNotEmpty) {
-      setState(() {
-        _segments.removeLast();
-        _canUndo = _segments.isNotEmpty;
-      });
-    }
   }
 
   void _goToMenu() {
@@ -433,8 +418,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       if (_currentStroke.length >= 2) {
         setState(() {
           _segments.add(TrackSegment(List.from(_currentStroke)));
-          _canUndo = true;
         });
+        // ── Auto-start immediately after first stroke ──
+        _startRiding();
       }
       _currentStroke = [];
     } else if (_phase == GamePhase.riding && _isDrawingStroke) {
@@ -485,18 +471,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             ),
           ),
 
-          // HUD
           _buildHUD(lvlColor),
 
-          // Progress bar
           if (_phase == GamePhase.riding && _targetDistance < 999999)
             _buildProgressBar(lvlColor),
 
-          // Idle/falling countdown warning
           if (_phase == GamePhase.riding && _idleWarning)
             _buildIdleWarning(),
 
-          // Overlays
           if (_phase == GamePhase.crashed) _buildCrashOverlay(),
           if (_phase == GamePhase.levelComplete) _buildLevelCompleteOverlay(lvlColor),
           if (_phase == GamePhase.drawing && _segments.isEmpty && _currentStroke.isEmpty)
@@ -506,45 +488,44 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // HUD — fixed overflow by wrapping in LayoutBuilder and using Flexible/
-  // constrained children so the Row never overflows on narrow screens.
-  // ──────────────────────────────────────────────────────────────────────────
+  // ─── HUD ──────────────────────────────────────────────────────────────────
+
   Widget _buildHUD(Color lvlColor) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
-          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Left side: badge + dist chip ──────────────────────────────
-            // Wrapped in Flexible so this side can shrink when space is tight.
             Flexible(
-              fit: FlexFit.loose,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _levelBadge(lvlColor),
                   if (_phase == GamePhase.riding || _phase == GamePhase.crashed) ...[
                     const SizedBox(width: 6),
-                    _HudChip(
-                      icon: Icons.straighten,
-                      label: 'DIST',
-                      value: '${_distanceMeters}m',
-                      color: GameConstants.accentCyan,
+                    Flexible(
+                      child: _HudChip(
+                        icon: Icons.straighten,
+                        label: 'DIST',
+                        value: '${_distanceMeters}m',
+                        color: GameConstants.accentCyan,
+                      ),
                     ),
                   ],
                 ],
               ),
             ),
 
-            // ── Right side: score + action buttons ────────────────────────
-            // Also Flexible so it can shrink; children are intrinsic-sized.
+            const SizedBox(width: 8),
+
             Flexible(
-              fit: FlexFit.loose,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.end,
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 6,
+                runSpacing: 4,
                 children: [
                   _HudChip(
                     icon: Icons.emoji_events,
@@ -552,23 +533,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                     value: '${_highScore}m',
                     color: const Color(0xFFFFDD00),
                   ),
-                  const SizedBox(width: 6),
-
-                  // Drawing phase controls
-                  if (_phase == GamePhase.drawing) ...[
-                    if (_canUndo) ...[
-                      _iconBtn(Icons.undo_rounded, 'Undo', GameConstants.accentOrange, _undo),
-                      const SizedBox(width: 6),
-                    ],
-                    if (_segments.isNotEmpty)
-                      _primaryBtn('RIDE ▶', GameConstants.accentCyan, _startRiding),
-                  ],
-
-                  // Riding controls
                   if (_phase == GamePhase.riding)
                     _iconBtn(Icons.refresh_rounded, 'Retry', GameConstants.accentRed, _resetToDrawing),
-
-                  // Crashed / complete
                   if (_phase == GamePhase.crashed || _phase == GamePhase.levelComplete)
                     _iconBtn(Icons.home_rounded, 'Menu', GameConstants.accentCyan, _goToMenu),
                 ],
@@ -593,20 +559,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'LVL $_currentLevel',
-            style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1),
-          ),
-          Text(
-            lvlData['name'] as String,
-            style: TextStyle(color: color.withOpacity(0.7), fontSize: 9, fontWeight: FontWeight.w600),
-          ),
+          Text('LVL $_currentLevel',
+              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1)),
+          Text(lvlData['name'] as String,
+              style: TextStyle(color: color.withOpacity(0.7), fontSize: 9, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
-
-  // ─── Idle / falling warning overlay ──────────────────────────────────────
 
   Widget _buildIdleWarning() {
     final remaining = (_idleCountdownSeconds - _idleTimer).clamp(0.0, _idleCountdownSeconds);
@@ -632,15 +592,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             children: [
               const Text('⚠️', style: TextStyle(fontSize: 16)),
               const SizedBox(width: 8),
-              Text(
-                '$label  ${remaining.toStringAsFixed(1)}s',
-                style: const TextStyle(
-                  color: Color(0xFFFF4444),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1,
-                ),
-              ),
+              Text('$label  ${remaining.toStringAsFixed(1)}s',
+                  style: const TextStyle(
+                      color: Color(0xFFFF4444), fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1)),
               const SizedBox(width: 10),
               SizedBox(
                 width: 60,
@@ -664,9 +618,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget _buildProgressBar(Color lvlColor) {
     final progress = (_distanceMeters / _targetDistance).clamp(0.0, 1.0);
     return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
+      bottom: 0, left: 0, right: 0,
       child: Container(
         height: 4,
         color: GameConstants.gridColor,
@@ -675,9 +627,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           widthFactor: progress,
           child: Container(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [lvlColor.withOpacity(0.7), lvlColor],
-              ),
+              gradient: LinearGradient(colors: [lvlColor.withOpacity(0.7), lvlColor]),
               boxShadow: [BoxShadow(color: lvlColor.withOpacity(0.6), blurRadius: 6)],
             ),
           ),
@@ -700,9 +650,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             color: const Color(0xFF161B22),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: GameConstants.accentRed.withOpacity(0.6), width: 2),
-            boxShadow: [
-              BoxShadow(color: GameConstants.accentRed.withOpacity(0.2), blurRadius: 40, spreadRadius: 4),
-            ],
+            boxShadow: [BoxShadow(color: GameConstants.accentRed.withOpacity(0.2), blurRadius: 40, spreadRadius: 4)],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -710,18 +658,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               const Text('💥', style: TextStyle(fontSize: 48)),
               const SizedBox(height: 8),
               const Text('CRASHED!',
-                  style: TextStyle(
-                      color: Color(0xFFFF4444), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 4)),
+                  style: TextStyle(color: Color(0xFFFF4444), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 4)),
               const SizedBox(height: 4),
               Text('Distance: ${_distanceMeters}m  •  Best: ${_highScore}m',
                   style: const TextStyle(color: Color(0xFF8B949E), fontSize: 14, fontWeight: FontWeight.w500)),
               const SizedBox(height: 6),
-              _targetDistance < 999999
-                  ? Text(
-                'Goal: ${_targetDistance}m',
-                style: TextStyle(color: GameConstants.accentCyan.withOpacity(0.6), fontSize: 12),
-              )
-                  : const SizedBox.shrink(),
+              if (_targetDistance < 999999)
+                Text('Goal: ${_targetDistance}m',
+                    style: TextStyle(color: GameConstants.accentCyan.withOpacity(0.6), fontSize: 12)),
               const SizedBox(height: 22),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -753,25 +697,18 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             color: const Color(0xFF161B22),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: lvlColor.withOpacity(0.7), width: 2),
-            boxShadow: [
-              BoxShadow(color: lvlColor.withOpacity(0.25), blurRadius: 40, spreadRadius: 4),
-            ],
+            boxShadow: [BoxShadow(color: lvlColor.withOpacity(0.25), blurRadius: 40, spreadRadius: 4)],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(isLast ? '🏆' : '🎉', style: const TextStyle(fontSize: 52)),
               const SizedBox(height: 8),
-              Text(
-                isLast ? 'YOU WIN!' : 'LEVEL COMPLETE!',
-                style: TextStyle(
-                    color: lvlColor, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 3),
-              ),
+              Text(isLast ? 'YOU WIN!' : 'LEVEL COMPLETE!',
+                  style: TextStyle(color: lvlColor, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 3)),
               const SizedBox(height: 4),
               Text(
-                isLast
-                    ? 'You completed all levels!'
-                    : 'Level $_currentLevel cleared • ${_distanceMeters}m',
+                isLast ? 'You completed all levels!' : 'Level $_currentLevel cleared • ${_distanceMeters}m',
                 style: const TextStyle(color: Color(0xFF8B949E), fontSize: 14),
               ),
               if (_highScore == _distanceMeters && _distanceMeters > 0) ...[
@@ -784,16 +721,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                     border: Border.all(color: const Color(0xFFFFDD00).withOpacity(0.4)),
                   ),
                   child: const Text('🏅 NEW BEST!',
-                      style: TextStyle(
-                          color: Color(0xFFFFDD00), fontSize: 13, fontWeight: FontWeight.w800)),
+                      style: TextStyle(color: Color(0xFFFFDD00), fontSize: 13, fontWeight: FontWeight.w800)),
                 ),
               ],
               const SizedBox(height: 22),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!isLast)
-                    _primaryBtn('NEXT ▶', lvlColor, _nextLevel),
+                  if (!isLast) _primaryBtn('NEXT ▶', lvlColor, _nextLevel),
                   if (!isLast) const SizedBox(width: 10),
                   _primaryBtn('⌂ MENU', GameConstants.accentOrange, _goToMenu),
                 ],
@@ -814,30 +749,24 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           children: [
             const Icon(Icons.gesture, color: Color(0xFF30363D), size: 72),
             const SizedBox(height: 14),
-            Text(
-              'Draw your track',
-              style: TextStyle(
-                  color: const Color(0xFF8B949E).withOpacity(0.65),
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5),
-            ),
+            Text('Draw a track to start!',
+                style: TextStyle(
+                    color: const Color(0xFF8B949E).withOpacity(0.65),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5)),
             const SizedBox(height: 6),
-            Text(
-              lvlData['description'] as String,
-              style: TextStyle(
-                  color: const Color(0xFF8B949E).withOpacity(0.4),
-                  fontSize: 13,
-                  letterSpacing: 0.8),
-            ),
+            Text(lvlData['description'] as String,
+                style: TextStyle(
+                    color: const Color(0xFF8B949E).withOpacity(0.4),
+                    fontSize: 13,
+                    letterSpacing: 0.8)),
             const SizedBox(height: 4),
-            Text(
-              'Goal: ${lvlData['distance']}m',
-              style: TextStyle(
-                  color: GameConstants.accentCyan.withOpacity(0.4),
-                  fontSize: 12,
-                  letterSpacing: 0.8),
-            ),
+            Text('Goal: ${lvlData['distance']}m',
+                style: TextStyle(
+                    color: GameConstants.accentCyan.withOpacity(0.4),
+                    fontSize: 12,
+                    letterSpacing: 0.8)),
           ],
         ),
       ),
@@ -852,8 +781,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 42,
-          height: 42,
+          width: 42, height: 42,
           decoration: BoxDecoration(
             color: const Color(0xFF161B22),
             borderRadius: BorderRadius.circular(11),
@@ -877,8 +805,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           boxShadow: [BoxShadow(color: color.withOpacity(0.14), blurRadius: 12)],
         ),
         child: Text(label,
-            style: TextStyle(
-                color: color, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
       ),
     );
   }
