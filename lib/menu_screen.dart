@@ -1,12 +1,13 @@
 import 'dart:math';
+import 'package:LineGlideXx/save_service.dart';
 import 'package:flutter/material.dart';
-import 'package:lineglidex/save_service.dart';
 
 import 'game_constants.dart';
 import 'game_models.dart';
 import 'game_screen.dart';
 import 'about_screen.dart';
 import 'level_select_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -96,7 +97,6 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
       backgroundColor: const Color(0xFF0D1117),
       body: Stack(
         children: [
-          // Animated background
           CustomPaint(size: size, painter: _MenuBgPainter(anim: _bgController)),
 
           if (_loading)
@@ -123,18 +123,10 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
         child: Column(
           children: [
             const SizedBox(height: 40),
-
-            // ── Logo + title ──
             _buildHero(),
-
             const SizedBox(height: 16),
-
-            // High score
             _buildHighScoreBar(),
-
             const SizedBox(height: 36),
-
-            // ── Main buttons ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
@@ -174,27 +166,26 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
                   _MenuButton(
                     icon: Icons.info_outline_rounded,
                     label: 'ABOUT',
-                    sublabel: 'Developer info & privacy policy',
+                    sublabel: 'Developer info & game details',
                     color: const Color(0xFFFF9800),
                     onTap: () => Navigator.of(context)
                         .push(MaterialPageRoute(builder: (_) => const AboutScreen())),
                   ),
+                  const SizedBox(height: 14),
+                  // Privacy Policy moved here from About screen
+                  _MenuButton(
+                    icon: Icons.privacy_tip_outlined,
+                    label: 'PRIVACY POLICY',
+                    sublabel: 'View our privacy policy',
+                    color: const Color(0xFF3FB950),
+                    onTap: () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+                  ),
                 ],
               ),
             ),
-
             const SizedBox(height: 40),
 
-            // Footer
-            Text(
-              '© 2025 Hamad Gaming Studio',
-              style: TextStyle(
-                color: const Color(0xFF8B949E).withOpacity(0.4),
-                fontSize: 11,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -204,7 +195,6 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
   Widget _buildHero() {
     return Column(
       children: [
-        // Icon
         Container(
           width: 80,
           height: 80,
@@ -229,7 +219,7 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
             colors: [Color(0xFF00E5FF), Color(0xFF58A6FF), Color(0xFF00E5FF)],
           ).createShader(bounds),
           child: const Text(
-            'LineGlide',
+            'LineGlideX',
             style: TextStyle(
               fontSize: 46,
               fontWeight: FontWeight.w900,
@@ -419,13 +409,11 @@ class _MenuBgPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Grid
     final grid = Paint()..color = const Color(0xFF161B22)..strokeWidth = 1;
     const step = 40.0;
     for (double x = 0; x < size.width; x += step) canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
     for (double y = 0; y < size.height; y += step) canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
 
-    // Flowing lines
     final t = anim.value;
     for (int i = 0; i < 3; i++) {
       final phase = i * 0.33 + t;

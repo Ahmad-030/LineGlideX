@@ -92,22 +92,23 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           // Animated grid
           CustomPaint(size: size, painter: _SplashGridPainter()),
 
-          // Glow blob
+          // Glow blob — changed to a warm purple/violet so it contrasts with
+          // the cyan text and doesn't visually merge with it.
           Center(
             child: AnimatedBuilder(
               animation: _logoController,
               builder: (_, __) => Opacity(
-                opacity: _logoOpacity.value * 0.35,
+                opacity: _logoOpacity.value * 0.30,
                 child: Container(
-                  width: 300,
-                  height: 300,
+                  width: 320,
+                  height: 320,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Color(0xFF00E5FF),
-                        blurRadius: 120,
-                        spreadRadius: 20,
+                        color: Color(0xFF7C3AED), // violet glow — distinct from cyan text
+                        blurRadius: 140,
+                        spreadRadius: 30,
                       ),
                     ],
                   ),
@@ -161,7 +162,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                         colors: [Color(0xFF00E5FF), Color(0xFF58A6FF)],
                       ).createShader(bounds),
                       child: const Text(
-                        'LineGlide',
+                        'LineGlideX',
                         style: TextStyle(
                           fontSize: 52,
                           fontWeight: FontWeight.w900,
@@ -173,23 +174,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   ),
                 ),
 
-                const SizedBox(height: 8),
 
-                AnimatedBuilder(
-                  animation: _lineController,
-                  builder: (_, __) => Opacity(
-                    opacity: _subOpacity.value,
-                    child: Text(
-                      'Hamad Gaming Studio',
-                      style: TextStyle(
-                        color: const Color(0xFF8B949E).withOpacity(0.7),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -229,7 +214,6 @@ class _LogoIconPainter extends CustomPainter {
     final cx = size.width / 2;
     final cy = size.height / 2;
 
-    // Draw a mini track line
     final path = Path()
       ..moveTo(12, cy + 8)
       ..quadraticBezierTo(cx, cy - 20, size.width - 12, cy + 8);
@@ -242,7 +226,6 @@ class _LogoIconPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round);
 
-    // Mini rider
     final rp = Offset(cx + 4, cy - 10);
     canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -271,7 +254,6 @@ class _LinePainter extends CustomPainter {
     final totalW = size.width;
     const lineY = 40.0;
 
-    // Draw line up to progress
     final path = Path()
       ..moveTo(0, lineY)
       ..lineTo(totalW * progress, lineY);
@@ -284,7 +266,6 @@ class _LinePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round);
 
-    // Glow
     canvas.drawPath(
         path,
         Paint()
@@ -293,7 +274,6 @@ class _LinePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
 
-    // Mini rider at front of line
     final rx = totalW * progress;
     final ry = lineY + riderOffsetY;
 

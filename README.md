@@ -1,4 +1,4 @@
-# lineglidex
+# LineGlideXx
 
 A new Flutter project.
 

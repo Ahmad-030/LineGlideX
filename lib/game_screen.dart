@@ -43,8 +43,18 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   int _targetDistance = 300;
   double _levelStartX = 0;
 
-  // Pencil is ALWAYS on during riding - no toggle needed
   bool _isDrawingStroke = false;
+
+  // ── Idle / falling detection ──────────────────────────────────────────────
+  // "Idle" = horizontal speed is very low while riding (stuck in place).
+  // "Falling" = rider is in the air with downward velocity beyond a threshold.
+  // In either case we give the player 3 seconds before crashing.
+  static const double _idleSpeedThreshold = 12.0;   // px/s — below this = idle
+  static const double _fallVelocityThreshold = 350.0; // px/s downward = falling fast
+  static const double _idleCountdownSeconds = 3.0;
+
+  double _idleTimer = 0.0;      // counts up while idle/falling
+  bool _idleWarning = false;    // true when countdown is active
 
   final Random _rng = Random();
 
@@ -89,6 +99,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _spawnObstacles();
       _checkObstacleCollisions();
       _checkLevelComplete();
+      _updateIdleTimer(dt);
     }
 
     _particles = _particles.map((p) {
@@ -102,6 +113,31 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     }).where((p) => p.opacity > 0).toList();
 
     if (mounted) setState(() {});
+  }
+
+  // ─── Idle / falling timer ─────────────────────────────────────────────────
+
+  void _updateIdleTimer(double dt) {
+    if (_rider == null) return;
+    final vel = _rider!.velocity;
+
+    final isIdle = vel.dx.abs() < _idleSpeedThreshold;
+    // Falling fast downward while NOT on ground (or barely on ground)
+    final isFalling = vel.dy > _fallVelocityThreshold && !_rider!.onGround;
+
+    if (isIdle || isFalling) {
+      _idleTimer += dt;
+      if (!_idleWarning && _idleTimer >= 0.3) {
+        _idleWarning = true;
+      }
+      if (_idleTimer >= _idleCountdownSeconds) {
+        _crash(_rider!.position);
+      }
+    } else {
+      // Player is moving normally — reset timer
+      _idleTimer = 0.0;
+      _idleWarning = false;
+    }
   }
 
   // ─── Physics ──────────────────────────────────────────────────────────────
@@ -131,7 +167,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     rider.onGround = landed;
     rider.position = newPos;
 
-    // Distance from level start
     _distanceMeters = ((newPos.dx - _levelStartX) / 10).floor().clamp(0, 999999);
     if (_distanceMeters > _highScore) {
       _highScore = _distanceMeters;
@@ -233,7 +268,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   // ─── Actions ──────────────────────────────────────────────────────────────
 
   void _crash(Offset worldPos) {
+    if (_phase == GamePhase.crashed) return; // prevent double-crash
     _phase = GamePhase.crashed;
+    _idleTimer = 0;
+    _idleWarning = false;
     _saveProgress(crashed: true);
     for (int i = 0; i < 32; i++) {
       final angle = _rng.nextDouble() * 2 * pi;
@@ -255,8 +293,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   void _levelComplete() {
     _phase = GamePhase.levelComplete;
+    _idleTimer = 0;
+    _idleWarning = false;
     _saveProgress(crashed: false);
-    // Celebration particles
     for (int i = 0; i < 50; i++) {
       final angle = _rng.nextDouble() * 2 * pi;
       final speed = 60 + _rng.nextDouble() * 180;
@@ -309,6 +348,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _distanceMeters = 0;
       _obstacles.clear();
       _nextObstacleX = startPos.dx + 550;
+      _idleTimer = 0;
+      _idleWarning = false;
       _rider = RiderState(position: startPos, velocity: tangent * GameConstants.startVelocity);
       final size = MediaQuery.of(context).size;
       _cameraX = startPos.dx - size.width * GameConstants.riderScreenXFraction;
@@ -329,6 +370,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _canUndo = false;
       _cameraX = 0;
       _cameraY = 0;
+      _idleTimer = 0;
+      _idleWarning = false;
     });
   }
 
@@ -366,7 +409,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     if (_phase == GamePhase.drawing) {
       _currentStroke = [d.localPosition];
     } else if (_phase == GamePhase.riding) {
-      // Pencil always on during riding
       _isDrawingStroke = true;
       _currentStroke = [screenToWorld(d.localPosition)];
     }
@@ -416,13 +458,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       backgroundColor: GameConstants.bgColor,
       body: Stack(
         children: [
-          // Scrolling grid
           CustomPaint(
             size: size,
             painter: GridPainter(cameraX: _cameraX, cameraY: _cameraY),
           ),
-
-          // Game canvas
           GestureDetector(
             onPanStart: _onPanStart,
             onPanUpdate: _onPanUpdate,
@@ -449,9 +488,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           // HUD
           _buildHUD(lvlColor),
 
-          // Progress bar (only while riding)
+          // Progress bar
           if (_phase == GamePhase.riding && _targetDistance < 999999)
             _buildProgressBar(lvlColor),
+
+          // Idle/falling countdown warning
+          if (_phase == GamePhase.riding && _idleWarning)
+            _buildIdleWarning(),
 
           // Overlays
           if (_phase == GamePhase.crashed) _buildCrashOverlay(),
@@ -463,52 +506,74 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // HUD — fixed overflow by wrapping in LayoutBuilder and using Flexible/
+  // constrained children so the Row never overflows on narrow screens.
+  // ──────────────────────────────────────────────────────────────────────────
   Widget _buildHUD(Color lvlColor) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
+          mainAxisSize: MainAxisSize.max,
           children: [
-            // Level badge
-            _levelBadge(lvlColor),
-            const SizedBox(width: 10),
-
-            // Distance
-            if (_phase == GamePhase.riding || _phase == GamePhase.crashed)
-              _HudChip(
-                icon: Icons.straighten,
-                label: 'DIST',
-                value: '${_distanceMeters}m',
-                color: GameConstants.accentCyan,
+            // ── Left side: badge + dist chip ──────────────────────────────
+            // Wrapped in Flexible so this side can shrink when space is tight.
+            Flexible(
+              fit: FlexFit.loose,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _levelBadge(lvlColor),
+                  if (_phase == GamePhase.riding || _phase == GamePhase.crashed) ...[
+                    const SizedBox(width: 6),
+                    _HudChip(
+                      icon: Icons.straighten,
+                      label: 'DIST',
+                      value: '${_distanceMeters}m',
+                      color: GameConstants.accentCyan,
+                    ),
+                  ],
+                ],
               ),
-
-            const Spacer(),
-
-            // High score
-            _HudChip(
-              icon: Icons.emoji_events,
-              label: 'BEST',
-              value: '${_highScore}m',
-              color: const Color(0xFFFFDD00),
             ),
-            const SizedBox(width: 8),
 
-            // Drawing phase controls
-            if (_phase == GamePhase.drawing) ...[
-              if (_canUndo)
-                _iconBtn(Icons.undo_rounded, 'Undo', GameConstants.accentOrange, _undo),
-              const SizedBox(width: 8),
-              if (_segments.isNotEmpty)
-                _primaryBtn('RIDE ▶', GameConstants.accentCyan, _startRiding),
-            ],
+            // ── Right side: score + action buttons ────────────────────────
+            // Also Flexible so it can shrink; children are intrinsic-sized.
+            Flexible(
+              fit: FlexFit.loose,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _HudChip(
+                    icon: Icons.emoji_events,
+                    label: 'BEST',
+                    value: '${_highScore}m',
+                    color: const Color(0xFFFFDD00),
+                  ),
+                  const SizedBox(width: 6),
 
-            // Riding controls
-            if (_phase == GamePhase.riding)
-              _iconBtn(Icons.refresh_rounded, 'Retry', GameConstants.accentRed, _resetToDrawing),
+                  // Drawing phase controls
+                  if (_phase == GamePhase.drawing) ...[
+                    if (_canUndo) ...[
+                      _iconBtn(Icons.undo_rounded, 'Undo', GameConstants.accentOrange, _undo),
+                      const SizedBox(width: 6),
+                    ],
+                    if (_segments.isNotEmpty)
+                      _primaryBtn('RIDE ▶', GameConstants.accentCyan, _startRiding),
+                  ],
 
-            // Crashed / complete
-            if (_phase == GamePhase.crashed || _phase == GamePhase.levelComplete)
-              _iconBtn(Icons.home_rounded, 'Menu', GameConstants.accentCyan, _goToMenu),
+                  // Riding controls
+                  if (_phase == GamePhase.riding)
+                    _iconBtn(Icons.refresh_rounded, 'Retry', GameConstants.accentRed, _resetToDrawing),
+
+                  // Crashed / complete
+                  if (_phase == GamePhase.crashed || _phase == GamePhase.levelComplete)
+                    _iconBtn(Icons.home_rounded, 'Menu', GameConstants.accentCyan, _goToMenu),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -518,7 +583,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget _levelBadge(Color color) {
     final lvlData = GameConstants.getLevel(_currentLevel);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(10),
@@ -537,6 +602,61 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             style: TextStyle(color: color.withOpacity(0.7), fontSize: 9, fontWeight: FontWeight.w600),
           ),
         ],
+      ),
+    );
+  }
+
+  // ─── Idle / falling warning overlay ──────────────────────────────────────
+
+  Widget _buildIdleWarning() {
+    final remaining = (_idleCountdownSeconds - _idleTimer).clamp(0.0, _idleCountdownSeconds);
+    final fraction = remaining / _idleCountdownSeconds;
+    final label = _rider != null && _rider!.velocity.dy > _fallVelocityThreshold && !_rider!.onGround
+        ? 'FALLING!'
+        : 'IDLE!';
+
+    return Positioned(
+      top: 80,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22).withOpacity(0.92),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFFF4444).withOpacity(0.7), width: 1.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('⚠️', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Text(
+                '$label  ${remaining.toStringAsFixed(1)}s',
+                style: const TextStyle(
+                  color: Color(0xFFFF4444),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 60,
+                height: 6,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: fraction,
+                    backgroundColor: const Color(0xFF30363D),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF4444)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -749,7 +869,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: color.withOpacity(0.13),
           borderRadius: BorderRadius.circular(12),
@@ -758,7 +878,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         ),
         child: Text(label,
             style: TextStyle(
-                color: color, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
+                color: color, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
       ),
     );
   }
@@ -777,7 +897,7 @@ class _HudChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF161B22),
         borderRadius: BorderRadius.circular(10),
@@ -786,11 +906,15 @@ class _HudChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 14),
-          const SizedBox(width: 5),
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 4),
           Text('$label: ',
               style: TextStyle(color: color.withOpacity(0.65), fontSize: 10, fontWeight: FontWeight.w600)),
-          Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w900)),
+          Flexible(
+            child: Text(value,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
+          ),
         ],
       ),
     );

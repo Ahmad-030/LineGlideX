@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'game_constants.dart';
-import 'privacy_policy_screen.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -48,19 +47,14 @@ class AboutScreen extends StatelessWidget {
                             shaderCallback: (bounds) => const LinearGradient(
                               colors: [Color(0xFF00E5FF), Color(0xFF58A6FF)],
                             ).createShader(bounds),
-                            child: const Text('LineGlide',
+                            child: const Text('LineGlideX',
                                 style: TextStyle(
                                     fontSize: 38,
                                     fontWeight: FontWeight.w900,
                                     color: Colors.white,
                                     letterSpacing: -1)),
                           ),
-                          const SizedBox(height: 4),
-                          Text('Version 1.0.0',
-                              style: TextStyle(
-                                  color: const Color(0xFF8B949E).withOpacity(0.6),
-                                  fontSize: 12,
-                                  letterSpacing: 1)),
+
                           const SizedBox(height: 12),
                           Text(
                             'Draw tracks, dodge obstacles and\nride to glory across 6 unique levels!',
@@ -118,9 +112,8 @@ class AboutScreen extends StatelessWidget {
                           const SizedBox(height: 16),
                           _infoRow(Icons.email_rounded, 'farhanabid961@gmail.com',
                               const Color(0xFFFF9800)),
-                          const SizedBox(height: 10),
-                          _infoRow(Icons.gamepad_rounded, 'Mobile Game Development',
-                              const Color(0xFFFF9800)),
+
+
                         ],
                       ),
                     ),
@@ -191,50 +184,6 @@ class AboutScreen extends StatelessWidget {
                             ),
                           )),
                         ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Privacy policy button
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF3FB950).withOpacity(0.07),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                              color: const Color(0xFF3FB950).withOpacity(0.35), width: 1.5),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.privacy_tip_outlined,
-                                color: Color(0xFF3FB950), size: 22),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('PRIVACY POLICY',
-                                      style: TextStyle(
-                                          color: Color(0xFF3FB950),
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1)),
-                                  Text('View our privacy policy',
-                                      style: TextStyle(
-                                          color: const Color(0xFF3FB950).withOpacity(0.6),
-                                          fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.open_in_new_rounded,
-                                color: Color(0xFF3FB950), size: 18),
-                          ],
-                        ),
                       ),
                     ),
 
